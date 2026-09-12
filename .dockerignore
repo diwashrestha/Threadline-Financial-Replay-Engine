@@ -1,0 +1,10 @@
+.venv
+.idea
+.git
+__pycache__
+*.pyc
+.pytest_cache
+*.png
+*.txt
+!requirements.txt
+!generator/requirements.txt

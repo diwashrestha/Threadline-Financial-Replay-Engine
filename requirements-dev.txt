@@ -1,0 +1,3 @@
+# Local CI / pytest (no Airflow — tests use event_validation & event_ingest only)
+pytest==8.3.4
+pytest-cov==7.1.0

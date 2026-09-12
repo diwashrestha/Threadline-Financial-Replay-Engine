@@ -1,0 +1,92 @@
+x-airflow-common: &airflow-common
+  image: etl-airflow:local
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+  
+    AIRFLOW_CONN_POSTGRES_DEFAULT: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    AIRFLOW_CONN_FS_DEFAULT: 'fs://?extra={"path":"/"}'
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set AIRFLOW_FERNET_KEY in .env — see .env.example}
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+  volumes:
+    - events-data:/data/events
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./reports:/data/reports
+    - ./scripts:/opt/airflow/scripts
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+      - ./scripts/init_warehouse.sql:/docker-entrypoint-initdb.d/01_init_warehouse.sql:ro
+
+  generator:
+    image: etl-generator:local
+    volumes:
+      - events-data:/data/events
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        python - <<'PY'
+        import pathlib
+        import psycopg2
+
+        sql = pathlib.Path("/opt/airflow/scripts/init_warehouse.sql").read_text()
+        conn = psycopg2.connect(
+            host="postgres", user="airflow", password="airflow", dbname="airflow"
+        )
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute(sql)
+        conn.close()
+        print("Warehouse schemas raw/marts are ready")
+        PY
+        airflow connections add fs_default --conn-type fs --conn-extra '{"path": "/"}' || true
+        airflow users create \
+          --username admin --password admin \
+          --firstname Admin --lastname User \
+          --role Admin --email admin@example.com || true
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: always
+
+volumes:
+  postgres-db-volume:
+  events-data:
