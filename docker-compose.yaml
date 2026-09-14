@@ -4,7 +4,10 @@ x-airflow-common: &airflow-common
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-  
+
+    THREADLINE_DATABASE_URL: >-
+      postgresql://${THREADLINE_DB_USER:-threadline}:${THREADLINE_DB_PASSWORD:-threadline_local}@threadline-postgres:5432/${THREADLINE_DB_NAME:-threadline}
+
     AIRFLOW_CONN_POSTGRES_DEFAULT: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
     AIRFLOW_CONN_FS_DEFAULT: 'fs://?extra={"path":"/"}'
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set AIRFLOW_FERNET_KEY in .env — see .env.example}
@@ -20,8 +23,84 @@ x-airflow-common: &airflow-common
   depends_on:
     postgres:
       condition: service_healthy
+    threadline-postgres:
+      condition: service_healthy
 
 services:
+  threadline-test-postgres:
+    image: postgres:16-alpine
+
+    profiles:
+      - test
+
+    environment:
+      POSTGRES_DB: threadline_test
+      POSTGRES_USER: threadline_test
+      POSTGRES_PASSWORD: threadline_test
+
+    ports:
+      - "5434:5432"
+
+    tmpfs:
+      - /var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U threadline_test -d threadline_test"
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+      
+  threadline-migrate:
+    image: etl-airflow:local
+    restart: "no"
+
+    entrypoint: /bin/bash
+
+    command:
+      - -c
+      - >
+        alembic
+        -c /opt/airflow/alembic.ini
+        upgrade head
+
+    environment:
+      THREADLINE_DATABASE_URL: >-
+        postgresql://${THREADLINE_DB_USER:-threadline}:${THREADLINE_DB_PASSWORD:-threadline_local}@threadline-postgres:5432/${THREADLINE_DB_NAME:-threadline}
+
+    depends_on:
+      threadline-postgres:
+        condition: service_healthy
+
+  threadline-postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${THREADLINE_DB_NAME:-threadline}
+      POSTGRES_USER: ${THREADLINE_DB_USER:-threadline}
+      POSTGRES_PASSWORD: ${THREADLINE_DB_PASSWORD:-threadline_local}
+
+    ports:
+      - "${THREADLINE_DB_HOST_PORT:-5433}:5432"
+
+    volumes:
+      - threadline-postgres-data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
   postgres:
     image: postgres:16
     environment:
@@ -83,12 +162,31 @@ services:
       retries: 5
       start_period: 30s
     restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      threadline-postgres:
+        condition: service_healthy
+
+      threadline-migrate:
+        condition: service_completed_successfully
 
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
     restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      threadline-postgres:
+        condition: service_healthy
+
+      threadline-migrate:
+        condition: service_completed_successfully
 
 volumes:
   postgres-db-volume:
   events-data:
+  threadline-postgres-data:

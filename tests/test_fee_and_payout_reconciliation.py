@@ -448,6 +448,8 @@ def test_g15_payout_header_does_not_equal_settlement_lines():
 
     transaction = result.transactions[0]
     payout = result.payouts[0]
+    
+    
 
     assert transaction.state is ReconciliationState.RECONCILED
     assert transaction.exception_codes == ()

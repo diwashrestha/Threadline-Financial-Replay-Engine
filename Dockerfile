@@ -6,6 +6,11 @@ FROM apache/airflow:2.9.3-python3.11
 COPY requirements.txt /
 RUN pip install --no-cache-dir "apache-airflow==${AIRFLOW_VERSION}" -r /requirements.txt
 
+COPY alembic.ini /opt/airflow/alembic.ini
+COPY migrations /opt/airflow/migrations
 # Pipeline code: DAG definitions and optional plugins
 COPY dags/ ${AIRFLOW_HOME}/dags/
 COPY plugins/ ${AIRFLOW_HOME}/plugins/
+
+
+
