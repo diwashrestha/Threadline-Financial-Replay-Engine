@@ -538,14 +538,14 @@ def _parse_money(
     except (MoneyError, TypeError) as exc:
         raise ContractViolation(
             str(exc),
-            code="INVALID_MONEY",
+            code="INVALID_AMOUNT",
             field=field,
         ) from exc
 
     if positive and amount <= Decimal("0.00"):
         raise ContractViolation(
             "must be greater than zero",
-            code="INVALID_MONEY",
+            code="INVALID_AMOUNT",
             field=field,
         )
 

@@ -582,6 +582,11 @@ def reconcile(
 
     for fee in fees:
         fees_by_payment[fee.payment_id].append(fee)
+        
+    fees_by_id = {
+        fee.fee_id: fee
+        for fee in fees
+        }
 
     # ---------------------------------------------------------
     # Orphan and non-payable payment rules
@@ -1271,50 +1276,48 @@ def reconcile(
 
                 if len(matching_lines) == 1:
                     line = matching_lines[0]
+                    
+                    expected_line_amount = movement.signed_amount
 
-                    if (
-                        line.signed_amount
-                        != movement.signed_amount
-                    ):
+                    # Expected payout uses the contractual fee amount.
+                    # Settlement validation checks whether the settlement
+                    # line agrees with MockPay's reported fee record.
+                    if movement.movement_type is MovementType.FEE:
+                        reported_fee = fees_by_id.get(
+                            movement.movement_id
+                        )
+
+                        if reported_fee is not None:
+                            expected_line_amount = -reported_fee.amount
+
+                    if line.signed_amount != expected_line_amount:
                         code = (
                             ExceptionCode
                             .SETTLEMENT_LINE_AMOUNT_MISMATCH
                         )
-                        payout_codes[payout.payout_id].add(
-                            code
-                        )
+                        payout_codes[payout.payout_id].add(code)
 
                         exceptions.append(
                             _new_exception(
                                 run_id=run_id,
-                                detected_at_utc=(
-                                    detected_at_utc
-                                ),
+                                detected_at_utc=detected_at_utc,
                                 rule_id=(
                                     "settlement.amount_matches_"
-                                    "expected_movement"
+                                    "reported_source_movement"
                                 ),
                                 exception_type=code,
                                 entity_type=(
-                                    EntityType
-                                    .SETTLEMENT_LINE.value
+                                EntityType.SETTLEMENT_LINE.value
                                 ),
-                                entity_id=(
-                                    line.settlement_line_id
-                                ),
-                                expected_amount=(
-                                    movement.signed_amount
-                                ),
-                                actual_amount=(
-                                    line.signed_amount
-                                ),
+                                entity_id=line.settlement_line_id,
+                                expected_amount=expected_line_amount,
+                                actual_amount=line.signed_amount,
                                 supporting_source_record_ids=(
-                                    *movement
-                                    .supporting_source_record_ids,
+                                    *movement.supporting_source_record_ids,
                                     _source_reference(line),
                                 ),
-                            )
                         )
+                    )
 
         if (
             payout_total_comparison_complete
