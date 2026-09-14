@@ -1,0 +1,4 @@
+# Pinned in Docker image via apache/airflow:2.9.3-python3.11
+apache-airflow-providers-postgres==5.13.1
+pytest==8.3.4
+psycopg[binary]>=3.1,<4

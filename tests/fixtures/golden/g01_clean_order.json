@@ -1,0 +1,202 @@
+{
+  "scenario_id": "G01",
+  "business_date": "2026-09-14",
+  "as_of": "2026-09-15T12:30:00+02:00",
+  "reports": {
+    "orders": {
+      "mode": "VALID"
+    },
+    "payments": {
+      "mode": "VALID"
+    },
+    "refunds": {
+      "mode": "VALID"
+    },
+    "fees": {
+      "mode": "VALID"
+    },
+    "settlement_lines": {
+      "mode": "VALID"
+    },
+    "payouts": {
+      "mode": "VALID"
+    }
+  },
+  "inputs": {
+    "orders": [
+      {
+        "order_id": "order-1001",
+        "created_at_utc": "2026-09-14T08:00:00Z",
+        "status": "PAID",
+        "currency": "EUR",
+        "order_total": "100.00",
+        "source_version": 1
+      }
+    ],
+    "payments": [
+      {
+        "payment_id": "pay-1001",
+        "order_id": "order-1001",
+        "attempt_number": 1,
+        "payment_method": "CARD",
+        "status": "CAPTURED",
+        "amount": "100.00",
+        "currency": "EUR",
+        "effective_at_utc": "2026-09-14T08:01:00Z",
+        "available_on": "2026-09-14",
+        "source_version": 1
+      }
+    ],
+    "refunds": [],
+    "fees": [
+      {
+        "fee_id": "fee-1001",
+        "payment_id": "pay-1001",
+        "fee_type": "PROCESSING",
+        "amount": "2.00",
+        "currency": "EUR",
+        "effective_at_utc": "2026-09-14T08:01:01Z",
+        "available_on": "2026-09-14",
+        "source_version": 1
+      }
+    ],
+    "settlement_lines": [
+      {
+        "settlement_line_id": "line-1001-capture",
+        "payout_id": "payout-2026-09-14",
+        "movement_type": "CAPTURE",
+        "movement_id": "pay-1001",
+        "signed_amount": "100.00",
+        "currency": "EUR",
+        "source_version": 1
+      },
+      {
+        "settlement_line_id": "line-1001-fee",
+        "payout_id": "payout-2026-09-14",
+        "movement_type": "FEE",
+        "movement_id": "fee-1001",
+        "signed_amount": "-2.00",
+        "currency": "EUR",
+        "source_version": 1
+      }
+    ],
+    "payouts": [
+      {
+        "payout_id": "payout-2026-09-14",
+        "payout_date": "2026-09-14",
+        "currency": "EUR",
+        "reported_net_amount": "98.00",
+        "source_version": 1
+      }
+    ]
+  },
+  "expected": {
+    "evidence_summary": {
+      "accepted": 6,
+      "duplicate": 0,
+      "stale": 0,
+      "conflicted": 0
+    },
+    "source_completeness": [
+      {
+        "source_system": "mockpay",
+        "report_type": "fees",
+        "business_date": "2026-09-14",
+        "state": "COMPLETE",
+        "batch_id": "G01-fees-2026-09-14"
+      },
+      {
+        "source_system": "mockpay",
+        "report_type": "payments",
+        "business_date": "2026-09-14",
+        "state": "COMPLETE",
+        "batch_id": "G01-payments-2026-09-14"
+      },
+      {
+        "source_system": "mockpay",
+        "report_type": "payouts",
+        "business_date": "2026-09-14",
+        "state": "COMPLETE",
+        "batch_id": "G01-payouts-2026-09-14"
+      },
+      {
+        "source_system": "mockpay",
+        "report_type": "refunds",
+        "business_date": "2026-09-14",
+        "state": "COMPLETE",
+        "batch_id": "G01-refunds-2026-09-14"
+      },
+      {
+        "source_system": "mockpay",
+        "report_type": "settlement_lines",
+        "business_date": "2026-09-14",
+        "state": "COMPLETE",
+        "batch_id": "G01-settlement_lines-2026-09-14"
+      },
+      {
+        "source_system": "threadline_shop",
+        "report_type": "orders",
+        "business_date": "2026-09-14",
+        "state": "COMPLETE",
+        "batch_id": "G01-orders-2026-09-14"
+      }
+    ],
+    "transactions": [
+      {
+        "order_id": "order-1001",
+        "order_status": "PAID",
+        "currency": "EUR",
+        "expected_collection": "100.00",
+        "captured_total": "100.00",
+        "collection_variance": "0.00",
+        "successful_refund_total": "0.00",
+        "expected_fee_total": "2.00",
+        "reported_fee_total": "2.00",
+        "lifetime_net_collection": "98.00",
+        "captured_payment_count": 1,
+        "successful_refund_count": 0,
+        "state": "RECONCILED",
+        "exception_codes": []
+      }
+    ],
+    "expected_movements": [
+      {
+        "movement_type": "CAPTURE",
+        "movement_id": "pay-1001",
+        "available_on": "2026-09-14",
+        "signed_amount": "100.00",
+        "supporting_source_record_ids": [
+          "PAYMENT:pay-1001"
+        ]
+      },
+      {
+        "movement_type": "FEE",
+        "movement_id": "fee-1001",
+        "available_on": "2026-09-14",
+        "signed_amount": "-2.00",
+        "supporting_source_record_ids": [
+          "PAYMENT:pay-1001",
+          "FEE:fee-1001"
+        ]
+      }
+    ],
+    "payouts": [
+      {
+        "payout_id": "payout-2026-09-14",
+        "payout_date": "2026-09-14",
+        "currency": "EUR",
+        "expected_payout": "98.00",
+        "reported_line_total": "98.00",
+        "reported_net_amount": "98.00",
+        "provider_report_variance": "0.00",
+        "end_to_end_payout_variance": "0.00",
+        "expected_movement_count": 2,
+        "settlement_line_count": 2,
+        "state": "RECONCILED",
+        "exception_codes": []
+      }
+    ],
+    "exceptions": [],
+    "quarantine_records": []
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "contract_version": "threadline_financial_contract_v1",
+  "detected_at_utc": "2026-09-15T10:30:00Z",
+  "exceptions": [],
+  "expected_movements": [
+    {
+      "available_on": "2026-09-14",
+      "movement_id": "pay-1001",
+      "movement_type": "CAPTURE",
+      "signed_amount": "100.00",
+      "supporting_source_record_ids": [
+        "PAYMENT:pay-1001"
+      ]
+    },
+    {
+      "available_on": "2026-09-14",
+      "movement_id": "fee-1001",
+      "movement_type": "FEE",
+      "signed_amount": "-2.00",
+      "supporting_source_record_ids": [
+        "PAYMENT:pay-1001",
+        "FEE:fee-1001"
+      ]
+    }
+  ],
+  "payouts": [
+    {
+      "contract_version": "threadline_financial_contract_v1",
+      "currency": "EUR",
+      "end_to_end_payout_variance": "0.00",
+      "exception_codes": [],
+      "expected_movement_count": 2,
+      "expected_payout": "98.00",
+      "payout_date": "2026-09-14",
+      "payout_id": "payout-2026-09-14",
+      "provider_report_variance": "0.00",
+      "reported_line_total": "98.00",
+      "reported_net_amount": "98.00",
+      "run_id": "golden:G01",
+      "settlement_line_count": 2,
+      "state": "RECONCILED"
+    }
+  ],
+  "quarantine_records": [],
+  "run_id": "golden:G01",
+  "source_completeness": [
+    {
+      "batch_id": "G01-fees-2026-09-14",
+      "business_date": "2026-09-14",
+      "reason": null,
+      "report_type": "fees",
+      "source_system": "mockpay",
+      "state": "COMPLETE"
+    },
+    {
+      "batch_id": "G01-payments-2026-09-14",
+      "business_date": "2026-09-14",
+      "reason": null,
+      "report_type": "payments",
+      "source_system": "mockpay",
+      "state": "COMPLETE"
+    },
+    {
+      "batch_id": "G01-payouts-2026-09-14",
+      "business_date": "2026-09-14",
+      "reason": null,
+      "report_type": "payouts",
+      "source_system": "mockpay",
+      "state": "COMPLETE"
+    },
+    {
+      "batch_id": "G01-refunds-2026-09-14",
+      "business_date": "2026-09-14",
+      "reason": null,
+      "report_type": "refunds",
+      "source_system": "mockpay",
+      "state": "COMPLETE"
+    },
+    {
+      "batch_id": "G01-settlement_lines-2026-09-14",
+      "business_date": "2026-09-14",
+      "reason": null,
+      "report_type": "settlement_lines",
+      "source_system": "mockpay",
+      "state": "COMPLETE"
+    },
+    {
+      "batch_id": "G01-orders-2026-09-14",
+      "business_date": "2026-09-14",
+      "reason": null,
+      "report_type": "orders",
+      "source_system": "threadline_shop",
+      "state": "COMPLETE"
+    }
+  ],
+  "transactions": [
+    {
+      "captured_payment_count": 1,
+      "captured_total": "100.00",
+      "collection_variance": "0.00",
+      "contract_version": "threadline_financial_contract_v1",
+      "currency": "EUR",
+      "exception_codes": [],
+      "expected_collection": "100.00",
+      "expected_fee_total": "2.00",
+      "lifetime_net_collection": "98.00",
+      "order_id": "order-1001",
+      "order_status": "PAID",
+      "reported_fee_total": "2.00",
+      "run_id": "golden:G01",
+      "state": "RECONCILED",
+      "successful_refund_count": 0,
+      "successful_refund_total": "0.00"
+    }
+  ]
+}
