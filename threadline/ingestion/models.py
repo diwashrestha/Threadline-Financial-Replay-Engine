@@ -10,6 +10,10 @@ from uuid import UUID
 
 from threadline.contracts import EntityType, ReportType
 
+from threadline.source_files import (
+    ReadySourceFile,
+    ingest_ready_source,
+)
 
 @dataclass(frozen=True, slots=True)
 class SourceDelivery:

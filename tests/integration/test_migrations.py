@@ -16,6 +16,8 @@ pytestmark = pytest.mark.integration
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+EXPECTED_HEAD_REVISION = "008_retryable_archival"
+
 EXPECTED_TABLES = {
     "alembic_version",
     "ingestion_batch",
@@ -148,8 +150,8 @@ def test_fresh_database_upgrades_to_head(
     )
 
     assert _current_revision(
-        clean_database
-    ) == "005_indexes_constraints"
+    clean_database
+) == EXPECTED_HEAD_REVISION
 
     assert EXPECTED_TABLES <= _table_names(
         clean_database
@@ -232,7 +234,7 @@ def test_upgrade_from_preceding_revision_preserves_data(
 
     assert _current_revision(
         clean_database
-    ) == "005_indexes_constraints"
+        ) == EXPECTED_HEAD_REVISION
 
     with psycopg.connect(clean_database) as connection:
         with connection.cursor() as cursor:
@@ -292,9 +294,9 @@ def test_last_revision_can_downgrade_and_reapply(
     )
 
     assert _current_revision(
-        clean_database
-    ) == "005_indexes_constraints"
-
+    clean_database
+    ) == EXPECTED_HEAD_REVISION
+    
     assert (
         "ix_ingestion_batch_archive_retry"
         in _index_names(clean_database)

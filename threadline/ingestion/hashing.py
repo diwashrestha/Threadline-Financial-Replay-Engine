@@ -10,6 +10,10 @@ from typing import Any
 
 from threadline.contracts import EntityType, ReportType
 
+from threadline.source_files import (
+    ReadySourceFile,
+    ingest_ready_source,
+)
 
 def sha256_bytes(content: bytes) -> str:
     if not isinstance(content, bytes):
