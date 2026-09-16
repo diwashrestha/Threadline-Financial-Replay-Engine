@@ -5,21 +5,30 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
 
-    THREADLINE_DATABASE_URL: >-
-      postgresql://${THREADLINE_DB_USER:-threadline}:${THREADLINE_DB_PASSWORD:-threadline_local}@threadline-postgres:5432/${THREADLINE_DB_NAME:-threadline}
-
     AIRFLOW_CONN_POSTGRES_DEFAULT: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
     AIRFLOW_CONN_FS_DEFAULT: 'fs://?extra={"path":"/"}'
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set AIRFLOW_FERNET_KEY in .env — see .env.example}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+    THREADLINE_DATABASE_URL: postgresql://threadline:threadline_local@threadline-postgres:5432/threadline
+
+    THREADLINE_RECOVERY_BUILDER: ${THREADLINE_RECOVERY_BUILDER:-}
+    THREADLINE_RECOVERY_VALIDATOR: threadline.publication:validate_for_publication
+    THREADLINE_PUBLICATION_NAME: threadline
+
+    THREADLINE_RECOVERY_MAX_REQUESTS: "10"
+    THREADLINE_RECOVERY_MAX_SECONDS: "120"
+
+    PYTHONPATH: /opt/airflow
   volumes:
     - events-data:/data/events
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./reports:/data/reports
     - ./scripts:/opt/airflow/scripts
+    - ./dags:/opt/airflow/dags
+    - ./threadline:/opt/airflow/threadline:ro
   depends_on:
     postgres:
       condition: service_healthy

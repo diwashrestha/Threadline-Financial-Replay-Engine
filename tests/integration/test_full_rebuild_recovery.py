@@ -10,6 +10,9 @@ from alembic import command
 from alembic.config import Config
 from psycopg.rows import dict_row
 
+from threadline.archival import archive_relative_path
+from threadline.completeness import ReportType
+
 from threadline.full_rebuild_recovery import (
     FullRebuildRecovery,
     enqueue_full_rebuild,
@@ -37,6 +40,18 @@ from threadline.recovery_behavior import (
 )
 
 from uuid import uuid4
+
+import hashlib
+import json
+
+from psycopg.types.json import Jsonb
+
+from threadline.archival import (
+    ArchiveService,
+    ArchiveIntegrityError,
+    archive_relative_path,
+    sha256_file,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -712,3 +727,353 @@ def test_rejected_candidate_preserves_previous_publication(database_url):
         assert connection.execute(
             "SELECT COUNT(*) FROM recovery_result"
         ).fetchone()[0] == 1
+        
+
+ARCHIVE_FAILURE_POINTS = (
+    "after_copy",
+    "after_temp_fsync",
+    "after_temp_checksum",
+    "after_rename",
+    "after_final_checksum",
+    "after_source_remove",
+    "before_status_update",
+)
+
+
+class ArchiveFailOnce:
+    def __init__(self, target):
+        assert target in ARCHIVE_FAILURE_POINTS
+        self.target = target
+        self.fired = False
+
+    def __call__(self, point):
+        if point == self.target and not self.fired:
+            self.fired = True
+            raise RuntimeError(f"Archive injected failure: {point}")
+
+
+def _archive_case(
+    database_url,
+    tmp_path,
+    *,
+    filename="payments-a.json",
+    failure_hook=None,
+):
+    inbox = tmp_path / "inbox"
+    archive = tmp_path / "archive"
+    inbox.mkdir(exist_ok=True)
+
+    payment = {
+        "payment_id": "PAY-ARCH-001",
+        "order_id": "ORD-ARCH-001",
+        "attempt_number": 1,
+        "payment_method": "CARD",
+        "status": "CAPTURED",
+        "amount": "100.00",
+        "currency": "EUR",
+        "effective_at_utc": "2026-09-15T08:01:00Z",
+        "available_on": "2026-09-15",
+        "source_version": 1,
+    }
+
+    content = json.dumps(
+        [payment],
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+    checksum = hashlib.sha256(content).hexdigest()
+    source = inbox / filename
+    source.write_bytes(content)
+
+    payload_checksum = hashlib.sha256(
+        json.dumps(
+            payment,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()
+
+    with psycopg.connect(
+        database_url,
+        row_factory=dict_row,
+    ) as connection:
+        lock_financial_state(connection)
+
+        batch = connection.execute(
+            """
+            INSERT INTO ingestion_batch (
+                delivery_key,
+                source_system,
+                report_type,
+                report_date,
+                original_filename,
+                file_checksum,
+                manifest_checksum,
+                schema_version,
+                declared_row_count,
+                observed_row_count,
+                ingestion_status,
+                committed_at_utc,
+                source_relative_path
+            )
+            VALUES (
+                %s, 'ARCHIVE_TEST', 'PAYMENTS', '2026-09-15',
+                %s, %s, %s, '1', 1, 1,
+                'COMMITTED', CURRENT_TIMESTAMP, %s
+            )
+            RETURNING batch_id
+            """,
+            (
+                hashlib.sha256(filename.encode()).hexdigest(),
+                filename,
+                checksum,
+                "b" * 64,
+                filename,
+            ),
+        ).fetchone()
+
+        connection.execute(
+            """
+            INSERT INTO source_receipt (
+                batch_id,
+                row_number,
+                entity_type,
+                source_id,
+                source_version,
+                payload_hash,
+                raw_payload,
+                disposition
+            )
+            VALUES (
+                %s, 1, 'PAYMENT', 'PAY-ARCH-001', 1,
+                %s, %s, 'ACCEPTED'
+            )
+            """,
+            (
+                batch["batch_id"],
+                payload_checksum,
+                Jsonb(payment),
+            ),
+        )
+
+    service = ArchiveService(
+        database_url=database_url,
+        inbox_root=inbox,
+        archive_root=archive,
+        failure_hook=failure_hook,
+    )
+
+    destination = archive / archive_relative_path(
+        "PAYMENTS",
+        AS_OF.date(),
+        checksum,
+    )
+
+    return service, batch["batch_id"], source, destination, checksum
+
+
+def _archive_batch_row(database_url, batch_id):
+    with psycopg.connect(
+        database_url,
+        row_factory=dict_row,
+    ) as connection:
+        return connection.execute(
+            """
+            SELECT *
+            FROM ingestion_batch
+            WHERE batch_id = %s
+            """,
+            (batch_id,),
+        ).fetchone()
+
+
+def test_archival_success_and_repeated_delivery(database_url, tmp_path):
+    service, batch_id, source, destination, checksum = _archive_case(
+        database_url,
+        tmp_path,
+    )
+
+    content = source.read_bytes()
+    first = service.archive_batch(batch_id)
+
+    assert first.reused_existing_object is False
+    assert destination.read_bytes() == content
+    assert sha256_file(destination) == checksum
+    assert not source.exists()
+
+    batch = _archive_batch_row(database_url, batch_id)
+
+    assert batch["ingestion_status"] == "COMMITTED"
+    assert batch["archive_status"] == "ARCHIVED"
+    assert batch["archived_at_utc"] is not None
+
+    # Redelivery of the same bytes can be cleaned up using the same object.
+    source.write_bytes(content)
+    second = service.archive_batch(batch_id)
+
+    assert second.reused_existing_object is True
+    assert destination.read_bytes() == content
+    assert not source.exists()
+
+
+@pytest.mark.parametrize("point", ARCHIVE_FAILURE_POINTS)
+def test_archival_failure_preserves_evidence_and_retries(
+    database_url,
+    tmp_path,
+    point,
+):
+    injector = ArchiveFailOnce(point)
+
+    service, batch_id, source, destination, checksum = _archive_case(
+        database_url,
+        tmp_path,
+        failure_hook=injector,
+    )
+    content = source.read_bytes()
+
+    with pytest.raises(RuntimeError, match=point):
+        service.archive_batch(batch_id)
+
+    assert injector.fired
+    assert source.exists()
+    assert source.read_bytes() == content
+
+    batch = _archive_batch_row(database_url, batch_id)
+
+    assert batch["ingestion_status"] == "COMMITTED"
+    assert batch["archive_status"] == "FAILED"
+    assert batch["archive_attempt_count"] == 1
+    assert point in batch["archive_error_message"]
+    assert batch["file_checksum"] == checksum
+
+    with psycopg.connect(database_url) as connection:
+        receipt_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM source_receipt
+            WHERE batch_id = %s
+            """,
+            (batch_id,),
+        ).fetchone()[0]
+
+    assert receipt_count == 1
+
+    # Same injector has already fired. Retry uses the persisted source path.
+    service.archive_batch(batch_id)
+
+    assert sha256_file(destination) == checksum
+    assert not source.exists()
+
+    batch = _archive_batch_row(database_url, batch_id)
+
+    assert batch["archive_status"] == "ARCHIVED"
+    assert batch["archive_attempt_count"] == 2
+    assert batch["archive_error_message"] is None
+
+
+@pytest.mark.parametrize(
+    "report_type",
+    [
+        ReportType.PAYMENTS,
+        ReportType.PAYMENTS.name,
+        ReportType.PAYMENTS.value,
+    ],
+)
+def test_archive_path_accepts_enum_name_and_value(report_type):
+    from datetime import date
+    from pathlib import Path
+
+    checksum = "ab" + "0" * 62
+
+    actual = archive_relative_path(
+        report_type,
+        date(2026, 9, 15),
+        checksum,
+    )
+
+    expected = (
+        Path("PAYMENTS")
+        / "2026-09-15"
+        / "ab"
+        / f"{checksum}.json"
+    )
+
+    assert actual == expected
+
+def test_mismatching_archive_object_is_not_overwritten(
+    database_url,
+    tmp_path,
+):
+    service, batch_id, source, destination, checksum = _archive_case(
+        database_url,
+        tmp_path,
+    )
+    original = source.read_bytes()
+
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(b"CORRUPTED ARCHIVE")
+
+    with pytest.raises(ArchiveIntegrityError):
+        service.archive_batch(batch_id)
+
+    assert source.read_bytes() == original
+    assert destination.read_bytes() == b"CORRUPTED ARCHIVE"
+
+    batch = _archive_batch_row(database_url, batch_id)
+    assert batch["ingestion_status"] == "COMMITTED"
+    assert batch["archive_status"] == "FAILED"
+
+
+def test_retry_can_finish_when_source_is_already_missing(
+    database_url,
+    tmp_path,
+):
+    service, batch_id, source, destination, checksum = _archive_case(
+        database_url,
+        tmp_path,
+    )
+
+    # Arrange the durable filesystem state left by a crash after deletion.
+    destination.parent.mkdir(parents=True)
+    destination.write_bytes(source.read_bytes())
+    source.unlink()
+
+    outcome = service.archive_batch(batch_id)
+
+    assert outcome.reused_existing_object is True
+    assert sha256_file(destination) == checksum
+
+    batch = _archive_batch_row(database_url, batch_id)
+    assert batch["archive_status"] == "ARCHIVED"
+
+
+def test_different_filenames_reuse_the_same_content_object(
+    database_url,
+    tmp_path,
+):
+    first = _archive_case(
+        database_url,
+        tmp_path,
+        filename="payments-a.json",
+    )
+    second = _archive_case(
+        database_url,
+        tmp_path,
+        filename="payments-b.json",
+    )
+
+    first_service, first_id, first_source, first_destination, checksum = first
+    second_service, second_id, second_source, second_destination, _ = second
+
+    assert first_destination == second_destination
+
+    first_service.archive_batch(first_id)
+    outcome = second_service.archive_batch(second_id)
+
+    assert outcome.reused_existing_object is True
+    assert sha256_file(first_destination) == checksum
+    assert not first_source.exists()
+    assert not second_source.exists()
+    
+
