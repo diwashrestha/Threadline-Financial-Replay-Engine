@@ -1,19 +1,29 @@
 x-airflow-common: &airflow-common
   image: etl-airflow:local
   user: "${AIRFLOW_UID:-50000}:0"
+
   environment: &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
 
-    AIRFLOW_CONN_POSTGRES_DEFAULT: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+      postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+
+    AIRFLOW_CONN_POSTGRES_DEFAULT: >-
+      postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+
     AIRFLOW_CONN_FS_DEFAULT: 'fs://?extra={"path":"/"}'
-    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:?set AIRFLOW_FERNET_KEY in .env — see .env.example}
+
+    AIRFLOW__CORE__FERNET_KEY: "${AIRFLOW_FERNET_KEY:?Set AIRFLOW_FERNET_KEY in .env}"
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
-    THREADLINE_DATABASE_URL: postgresql://threadline:threadline_local@threadline-postgres:5432/threadline
 
-    THREADLINE_RECOVERY_BUILDER: ${THREADLINE_RECOVERY_BUILDER:-}
+    AIRFLOW__API__AUTH_BACKENDS: >-
+      airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
+
+    THREADLINE_DATABASE_URL: >-
+      postgresql://${THREADLINE_DB_USER:-threadline}:${THREADLINE_DB_PASSWORD:-threadline_local}@threadline-postgres:5432/${THREADLINE_DB_NAME:-threadline}
+
+    THREADLINE_RECOVERY_BUILDER: "${THREADLINE_RECOVERY_BUILDER:-threadline.recovery_adapters:build_candidate}"
     THREADLINE_RECOVERY_VALIDATOR: threadline.publication:validate_for_publication
     THREADLINE_PUBLICATION_NAME: threadline
 
@@ -21,66 +31,46 @@ x-airflow-common: &airflow-common
     THREADLINE_RECOVERY_MAX_SECONDS: "120"
 
     PYTHONPATH: /opt/airflow
+
   volumes:
     - events-data:/data/events
     - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./reports:/data/reports
     - ./scripts:/opt/airflow/scripts
-    - ./dags:/opt/airflow/dags
     - ./threadline:/opt/airflow/threadline:ro
+
   depends_on:
     postgres:
       condition: service_healthy
     threadline-postgres:
       condition: service_healthy
 
+
 services:
-  threadline-test-postgres:
-    image: postgres:16-alpine
-    profiles:
-      - test
+  # Airflow metadata and the original raw/marts warehouse.
+  postgres:
+    image: postgres:16
+
     environment:
-      POSTGRES_DB: threadline_test
-      POSTGRES_USER: threadline_test
-      POSTGRES_PASSWORD: threadline_test
-    ports:
-      - "127.0.0.1:5434:5432"
-    tmpfs:
-      - /var/lib/postgresql/data
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+      - ./scripts/init_warehouse.sql:/docker-entrypoint-initdb.d/01_init_warehouse.sql:ro
+
     healthcheck:
       test:
         - CMD-SHELL
-        - pg_isready -U threadline_test -d threadline_test
-      interval: 2s
-      timeout: 3s
-      retries: 20
-      
-  threadline-migrate:
-    image: etl-airflow:local
-    restart: "no"
+        - pg_isready -U airflow -d airflow
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
 
-    entrypoint: /bin/bash
-
-    command:
-      - -c
-      - >
-        alembic
-        -c /opt/airflow/alembic.ini
-        upgrade head
-
-    environment:
-      THREADLINE_DATABASE_URL: >-
-        postgresql://${THREADLINE_DB_USER:-threadline}:${THREADLINE_DB_PASSWORD:-threadline_local}@threadline-postgres:5432/${THREADLINE_DB_NAME:-threadline}
-
-    depends_on:
-      threadline-postgres:
-        condition: service_healthy
-    
-    volumes:
-      - ./migrations:/opt/airflow/migrations:ro
-      - ./alembic.ini:/opt/airflow/alembic.ini:ro
-
+  # Threadline business database.
   threadline-postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -98,82 +88,170 @@ services:
 
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"
-        ]
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
-  postgres:
-    image: postgres:16
+
+  # Apply business database migrations before Airflow starts.
+  threadline-migrate:
+    image: etl-airflow:local
+    restart: "no"
+
+    entrypoint:
+      - /bin/bash
+
+    command:
+      - -ec
+      - alembic -c /opt/airflow/alembic.ini upgrade head
+
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
-    healthcheck:
-      test: ["CMD", "pg_isready", "-U", "airflow"]
-      interval: 10s
-      retries: 5
-      start_period: 5s
+      THREADLINE_DATABASE_URL: >-
+        postgresql://${THREADLINE_DB_USER:-threadline}:${THREADLINE_DB_PASSWORD:-threadline_local}@threadline-postgres:5432/${THREADLINE_DB_NAME:-threadline}
+      PYTHONPATH: /opt/airflow
+
     volumes:
-      - postgres-db-volume:/var/lib/postgresql/data
-      - ./scripts/init_warehouse.sql:/docker-entrypoint-initdb.d/01_init_warehouse.sql:ro
+      - ./migrations:/opt/airflow/migrations:ro
+      - ./alembic.ini:/opt/airflow/alembic.ini:ro
+      - ./threadline:/opt/airflow/threadline:ro
+
+    depends_on:
+      threadline-postgres:
+        condition: service_healthy
+
+  # Disposable database for ordinary integration tests.
+  threadline-test-postgres:
+    image: postgres:16-alpine
+
+    profiles:
+      - test
+
+    environment:
+      POSTGRES_DB: threadline_test
+      POSTGRES_USER: threadline_test
+      POSTGRES_PASSWORD: threadline_test
+
+    ports:
+      - "127.0.0.1:5434:5432"
+
+    tmpfs:
+      - /var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U threadline_test -d threadline_test
+      interval: 2s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  # Persistent test database for the F05 stop/start scenario.
+  threadline-outage-postgres:
+    image: postgres:16-alpine
+
+    profiles:
+      - outage-test
+
+    environment:
+      POSTGRES_DB: threadline_outage_test
+      POSTGRES_USER: threadline_test
+      POSTGRES_PASSWORD: threadline_test
+
+    ports:
+      - "127.0.0.1:5435:5432"
+
+    volumes:
+      - threadline-outage-test-data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U threadline_test -d threadline_outage_test
+      interval: 2s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
 
   generator:
     image: etl-generator:local
+    restart: unless-stopped
+
     volumes:
       - events-data:/data/events
-    restart: unless-stopped
 
   airflow-init:
     <<: *airflow-common
-    # entrypoint: /bin/bash
+
     command:
       - bash
       - -ec
       - |
         airflow db migrate
+
         python - <<'PY'
         import pathlib
         import psycopg2
 
-        sql = pathlib.Path("/opt/airflow/scripts/init_warehouse.sql").read_text()
-        conn = psycopg2.connect(
-            host="postgres", user="airflow", password="airflow", dbname="airflow"
+        sql = pathlib.Path(
+            "/opt/airflow/scripts/init_warehouse.sql"
+        ).read_text()
+
+        connection = psycopg2.connect(
+            host="postgres",
+            user="airflow",
+            password="airflow",
+            dbname="airflow",
         )
-        conn.autocommit = True
-        with conn.cursor() as cur:
-            cur.execute(sql)
-        conn.close()
+
+        try:
+            connection.autocommit = True
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+        finally:
+            connection.close()
+
         print("Warehouse schemas raw/marts are ready")
         PY
-        airflow connections add fs_default --conn-type fs --conn-extra '{"path": "/"}' || true
+
+        airflow connections add fs_default \
+          --conn-type fs \
+          --conn-extra '{"path": "/"}' || true
+
         airflow users create \
-          --username admin --password admin \
-          --firstname Admin --lastname User \
-          --role Admin --email admin@example.com || true
+          --username admin \
+          --password admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com || true
 
   airflow-webserver:
     <<: *airflow-common
     command: webserver
+    restart: always
+
     ports:
       - "8080:8080"
+
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      test:
+        - CMD
+        - curl
+        - --fail
+        - http://localhost:8080/health
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
-    restart: always
+
     depends_on:
       postgres:
         condition: service_healthy
-
       threadline-postgres:
         condition: service_healthy
-
       threadline-migrate:
         condition: service_completed_successfully
 
@@ -181,17 +259,18 @@ services:
     <<: *airflow-common
     command: scheduler
     restart: always
+
     depends_on:
       postgres:
         condition: service_healthy
-
       threadline-postgres:
         condition: service_healthy
-
       threadline-migrate:
         condition: service_completed_successfully
+
 
 volumes:
   postgres-db-volume:
   events-data:
   threadline-postgres-data:
+  threadline-outage-test-data:
