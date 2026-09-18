@@ -95,8 +95,17 @@ def make_full_rebuild_builder(
                     f"{receipt['receipt_id']}"
                 )
 
+
+            
+            entity_label = receipt["entity_type"]
+
+            entity_type = EntityType.__members__.get(entity_label)
+
+            if entity_type is None:
+                entity_type = EntityType(entity_label)
+
             record = parse_source_record(
-                EntityType(receipt["entity_type"]),
+                entity_type,
                 receipt["raw_payload"],
             )
 
