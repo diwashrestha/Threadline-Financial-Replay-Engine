@@ -37,6 +37,7 @@ from threadline.contracts import (
 )
 from threadline.recovery_rebuild import make_full_rebuild_builder
 
+from threadline.durable_completeness import load_completeness
 
 EnumT = TypeVar("EnumT", bound=Enum)
 
@@ -118,159 +119,159 @@ def make_quarantine(
     )
 
 
-def load_completeness(
-    connection: psycopg.Connection,
-    as_of_utc: datetime,
-) -> tuple[CompletenessResult, ...]:
-    """Evaluate historical coverage without manufacturing manifest evidence.
+# def load_completeness(
+#     connection: psycopg.Connection,
+#     as_of_utc: datetime,
+# ) -> tuple[CompletenessResult, ...]:
+#     """Evaluate historical coverage without manufacturing manifest evidence.
 
-    Coverage begins at the earliest finalized report date and extends
-    through the later of:
-    - the latest finalized report date;
-    - yesterday in Europe/Berlin at the request's frozen evaluation time.
+#     Coverage begins at the earliest finalized report date and extends
+#     through the later of:
+#     - the latest finalized report date;
+#     - yesterday in Europe/Berlin at the request's frozen evaluation time.
 
-    Missing calendar days within that span are evaluated too.
+#     Missing calendar days within that span are evaluated too.
 
-    The existing Stage 2 engine accepts one result per report type.
-    Consequently, each report type receives its worst daily result.
-    """
-    if (
-        as_of_utc.tzinfo is None
-        or as_of_utc.utcoffset() is None
-    ):
-        raise ValueError("as_of_utc must be timezone-aware")
+#     The existing Stage 2 engine accepts one result per report type.
+#     Consequently, each report type receives its worst daily result.
+#     """
+#     if (
+#         as_of_utc.tzinfo is None
+#         or as_of_utc.utcoffset() is None
+#     ):
+#         raise ValueError("as_of_utc must be timezone-aware")
 
-    with connection.cursor(row_factory=dict_row) as cursor:
-        cursor.execute(
-            """
-            SELECT
-                batch_id,
-                source_system,
-                report_type,
-                report_date,
-                observed_row_count,
-                file_checksum,
-                received_at_utc
-            FROM ingestion_batch
-            WHERE ingestion_status IN ('COMMITTED', 'FAILED')
-            ORDER BY received_at_utc, batch_id
-            """
-        )
-        batches = cursor.fetchall()
+#     with connection.cursor(row_factory=dict_row) as cursor:
+#         cursor.execute(
+#             """
+#             SELECT
+#                 batch_id,
+#                 source_system,
+#                 report_type,
+#                 report_date,
+#                 observed_row_count,
+#                 file_checksum,
+#                 received_at_utc
+#             FROM ingestion_batch
+#             WHERE ingestion_status IN ('COMMITTED', 'FAILED')
+#             ORDER BY received_at_utc, batch_id
+#             """
+#         )
+#         batches = cursor.fetchall()
 
-    normalized_batches = []
+#     normalized_batches = []
 
-    for batch in batches:
-        normalized_batches.append(
-            (
-                batch,
-                enum_member(ReportType, batch["report_type"]),
-                enum_member(SourceSystem, batch["source_system"]),
-            )
-        )
+#     for batch in batches:
+#         normalized_batches.append(
+#             (
+#                 batch,
+#                 enum_member(ReportType, batch["report_type"]),
+#                 enum_member(SourceSystem, batch["source_system"]),
+#             )
+#         )
 
-    yesterday = (
-        as_of_utc.astimezone(BERLIN).date()
-        - timedelta(days=1)
-    )
+#     yesterday = (
+#         as_of_utc.astimezone(BERLIN).date()
+#         - timedelta(days=1)
+#     )
 
-    if batches:
-        first_date = min(batch["report_date"] for batch in batches)
-        last_date = max(
-            yesterday,
-            max(batch["report_date"] for batch in batches),
-        )
-    else:
-        first_date = yesterday
-        last_date = yesterday
+#     if batches:
+#         first_date = min(batch["report_date"] for batch in batches)
+#         last_date = max(
+#             yesterday,
+#             max(batch["report_date"] for batch in batches),
+#         )
+#     else:
+#         first_date = yesterday
+#         last_date = yesterday
 
-    daily_results = {
-        report_type: []
-        for report_type in EXPECTED_REPORTS
-    }
+#     daily_results = {
+#         report_type: []
+#         for report_type in EXPECTED_REPORTS
+#     }
 
-    business_date = first_date
+#     business_date = first_date
 
-    while business_date <= last_date:
-        for report_type in EXPECTED_REPORTS:
-            matching = [
-                (batch, source_system)
-                for batch, stored_report_type, source_system
-                in normalized_batches
-                if (
-                    stored_report_type is report_type
-                    and batch["report_date"] == business_date
-                    and batch["received_at_utc"] <= as_of_utc
-                )
-            ]
+#     while business_date <= last_date:
+#         for report_type in EXPECTED_REPORTS:
+#             matching = [
+#                 (batch, source_system)
+#                 for batch, stored_report_type, source_system
+#                 in normalized_batches
+#                 if (
+#                     stored_report_type is report_type
+#                     and batch["report_date"] == business_date
+#                     and batch["received_at_utc"] <= as_of_utc
+#                 )
+#             ]
 
-            evidence = ReportEvidence()
+#             evidence = ReportEvidence()
 
-            if matching:
-                # Deterministic selection of the earliest visible observation.
-                batch, source_system = min(
-                    matching,
-                    key=lambda item: (
-                        item[0]["received_at_utc"],
-                        str(item[0]["batch_id"]),
-                    ),
-                )
+#             if matching:
+#                 # Deterministic selection of the earliest visible observation.
+#                 batch, source_system = min(
+#                     matching,
+#                     key=lambda item: (
+#                         item[0]["received_at_utc"],
+#                         str(item[0]["batch_id"]),
+#                     ),
+#                 )
 
-                data_file = DataFileEvidence(
-                    batch_id=str(batch["batch_id"]),
-                    source_system=source_system,
-                    report_type=report_type,
-                    business_date=business_date,
-                    received_at_utc=batch["received_at_utc"],
-                    parsed_row_count=batch["observed_row_count"],
-                    sha256=batch["file_checksum"],
-                )
+#                 data_file = DataFileEvidence(
+#                     batch_id=str(batch["batch_id"]),
+#                     source_system=source_system,
+#                     report_type=report_type,
+#                     business_date=business_date,
+#                     received_at_utc=batch["received_at_utc"],
+#                     parsed_row_count=batch["observed_row_count"],
+#                     sha256=batch["file_checksum"],
+#                 )
 
-                evidence = ReportEvidence(
-                    data_file=data_file,
+#                 evidence = ReportEvidence(
+#                     data_file=data_file,
 
-                    # A manifest checksum cannot reconstruct its contents.
-                    # Keep the manifest missing until durable bodies exist.
-                    manifest=None,
-                )
+#                     # A manifest checksum cannot reconstruct its contents.
+#                     # Keep the manifest missing until durable bodies exist.
+#                     manifest=None,
+#                 )
 
-            result = evaluate_report(
-                report_type=report_type,
-                business_date=business_date,
-                as_of=as_of_utc,
-                evidence=evidence,
-            )
+#             result = evaluate_report(
+#                 report_type=report_type,
+#                 business_date=business_date,
+#                 as_of=as_of_utc,
+#                 evidence=evidence,
+#             )
 
-            daily_results[report_type].append(result)
+#             daily_results[report_type].append(result)
 
-        business_date += timedelta(days=1)
+#         business_date += timedelta(days=1)
 
-    severity = {
-        SourceCompleteness.COMPLETE: 0,
-        SourceCompleteness.PENDING: 1,
-        SourceCompleteness.INCOMPLETE: 2,
-    }
+#     severity = {
+#         SourceCompleteness.COMPLETE: 0,
+#         SourceCompleteness.PENDING: 1,
+#         SourceCompleteness.INCOMPLETE: 2,
+#     }
 
-    combined = []
+#     combined = []
 
-    for report_type in EXPECTED_REPORTS:
-        # Highest severity wins. Earliest date breaks ties deterministically.
-        worst = max(
-            daily_results[report_type],
-            key=lambda result: (
-                severity[result.status.state],
-                -result.status.business_date.toordinal(),
-            ),
-        )
+#     for report_type in EXPECTED_REPORTS:
+#         # Highest severity wins. Earliest date breaks ties deterministically.
+#         worst = max(
+#             daily_results[report_type],
+#             key=lambda result: (
+#                 severity[result.status.state],
+#                 -result.status.business_date.toordinal(),
+#             ),
+#         )
 
-        combined.append(worst)
+#         combined.append(worst)
 
-    return tuple(
-        sorted(
-            combined,
-            key=lambda result: result.sort_key,
-        )
-    )
+#     return tuple(
+#         sorted(
+#             combined,
+#             key=lambda result: result.sort_key,
+#         )
+#     )
 
 
 # This module-level binding is importable by recovery_runtime.py.

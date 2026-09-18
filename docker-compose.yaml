@@ -38,31 +38,23 @@ x-airflow-common: &airflow-common
 services:
   threadline-test-postgres:
     image: postgres:16-alpine
-
     profiles:
       - test
-
     environment:
       POSTGRES_DB: threadline_test
       POSTGRES_USER: threadline_test
       POSTGRES_PASSWORD: threadline_test
-
     ports:
-      - "5434:5432"
-
+      - "127.0.0.1:5434:5432"
     tmpfs:
       - /var/lib/postgresql/data
-
     healthcheck:
       test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U threadline_test -d threadline_test"
-        ]
+        - CMD-SHELL
+        - pg_isready -U threadline_test -d threadline_test
       interval: 2s
-      timeout: 5s
+      timeout: 3s
       retries: 20
-      start_period: 5s
       
   threadline-migrate:
     image: etl-airflow:local

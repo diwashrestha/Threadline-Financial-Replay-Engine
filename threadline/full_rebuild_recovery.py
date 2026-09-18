@@ -22,6 +22,7 @@ from threadline.recovery_fingerprint import (
 
 from threadline.recovery_queue import RecoveryQueue
 
+from threadline.postgres_result_rows import persist_candidate_rows
 
 from threadline.recovery_fingerprint import (
     FINANCIAL_FINGERPRINT_VERSION,
@@ -411,6 +412,10 @@ class FullRebuildRecovery:
                             ),
                         )
 
+                        persist_candidate_rows(connection, document)
+
+                        self.failure_hook("after_result_insert")
+                        self.failure_hook("before_pointer_update")
                         self.failure_hook("after_result_insert")
                         self.failure_hook("before_pointer_update")
 
