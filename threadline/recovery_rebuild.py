@@ -12,7 +12,7 @@ from psycopg.rows import dict_row
 from threadline.canonicalize import canonicalize
 from threadline.contracts import EntityType, parse_source_record
 from threadline.reconcile import reconcile
-
+from threadline.conflict_evidence import stabilize_conflict_evidence
 
 EnvelopeFactory = Callable[
     [Mapping[str, Any], Any],
@@ -122,12 +122,14 @@ def make_full_rebuild_builder(
             load_completeness(connection, as_of_utc)
         )
 
-        return reconcile(
-            run_id=run_id,
-            detected_at=as_of_utc,
-            canonicalization=canonicalization,
-            completeness_results=completeness_results,
-            quarantine_records=tuple(quarantine),
+        candidate = reconcile(
+            run_id = run_id,
+            detected_at = as_of_utc,
+            canonicalization= canonicalization,
+            completeness_results = completeness_results,
+            quarantine_records = tuple(quarantine)
         )
-
+        
+        return stabilize_conflict_evidence(connection, candidate)
+        
     return build_candidate
