@@ -1,0 +1,167 @@
+{
+  "benchmark_result": "NOT_VERIFIED",
+  "database": "threadline_benchmark_test",
+  "generated_at_utc": "2026-09-28T20:03:38.938438+00:00",
+  "workloads": [
+    {
+      "archive_retries": 0,
+      "archive_seconds": 0.233992,
+      "correctness": {
+        "duplicate_preserved_previous_result": null,
+        "incremental_equals_full_rebuild": null,
+        "published_equals_full_rebuild": true
+      },
+      "database_statements": {
+        "archive": 48,
+        "full_rebuild_check": 3,
+        "incremental_check": 0,
+        "ingestion": 80054,
+        "recovery": 12174
+      },
+      "files_ingested": 6,
+      "full_rebuild_fingerprint": "5f27ecccc203bb1204dd834139eb90046647ca9b4d9222aa62a8af0a5f2f643a",
+      "full_rebuild_seconds": 0.820258,
+      "incremental_fingerprint": null,
+      "incremental_seconds": null,
+      "ingestion_rows_per_second": 161.97,
+      "ingestion_seconds": 61.741715,
+      "logical_fingerprint": "5f27ecccc203bb1204dd834139eb90046647ca9b4d9222aa62a8af0a5f2f643a",
+      "publication_seconds": 9.162862,
+      "reconciliation_seconds": 8.518262,
+      "records_ingested": 10000,
+      "recovery_queue_delay_seconds_average": 44.088098,
+      "recovery_queue_delay_seconds_max": 66.416091,
+      "recovery_retries": 0,
+      "recovery_runs": 6,
+      "workload": "10,000 clean records"
+    },
+    {
+      "archive_retries": 0,
+      "archive_seconds": 0.02864,
+      "correctness": {
+        "duplicate_preserved_previous_result": null,
+        "incremental_equals_full_rebuild": null,
+        "published_equals_full_rebuild": true
+      },
+      "database_statements": {
+        "archive": 8,
+        "full_rebuild_check": 3,
+        "incremental_check": 0,
+        "ingestion": 17,
+        "recovery": 2034
+      },
+      "files_ingested": 1,
+      "full_rebuild_fingerprint": "bad5c8ed559ac6c415368059d5dcdd5eb7c9ea993b9b4e4b4f951fcd74069332",
+      "full_rebuild_seconds": 0.954711,
+      "incremental_fingerprint": null,
+      "incremental_seconds": null,
+      "ingestion_rows_per_second": 30.19,
+      "ingestion_seconds": 0.033119,
+      "logical_fingerprint": "bad5c8ed559ac6c415368059d5dcdd5eb7c9ea993b9b4e4b4f951fcd74069332",
+      "publication_seconds": 1.392615,
+      "reconciliation_seconds": 1.055996,
+      "records_ingested": 1,
+      "recovery_queue_delay_seconds_average": 0.101335,
+      "recovery_queue_delay_seconds_max": 0.101335,
+      "recovery_retries": 0,
+      "recovery_runs": 1,
+      "workload": "one late refund"
+    },
+    {
+      "archive_retries": 0,
+      "archive_seconds": 0.030317,
+      "correctness": {
+        "duplicate_preserved_previous_result": null,
+        "incremental_equals_full_rebuild": null,
+        "published_equals_full_rebuild": true
+      },
+      "database_statements": {
+        "archive": 8,
+        "full_rebuild_check": 3,
+        "incremental_check": 0,
+        "ingestion": 809,
+        "recovery": 2034
+      },
+      "files_ingested": 1,
+      "full_rebuild_fingerprint": "25ba295aeedf08ac99e90ae9309309484917c13620f8f4be508a329e9cdff639",
+      "full_rebuild_seconds": 0.970539,
+      "incremental_fingerprint": null,
+      "incremental_seconds": null,
+      "ingestion_rows_per_second": 169.57,
+      "ingestion_seconds": 0.589741,
+      "logical_fingerprint": "25ba295aeedf08ac99e90ae9309309484917c13620f8f4be508a329e9cdff639",
+      "publication_seconds": 1.802319,
+      "reconciliation_seconds": 1.260167,
+      "records_ingested": 100,
+      "recovery_queue_delay_seconds_average": 2.74078,
+      "recovery_queue_delay_seconds_max": 2.74078,
+      "recovery_retries": 0,
+      "recovery_runs": 1,
+      "workload": "1% higher-version corrections"
+    },
+    {
+      "archive_retries": 0,
+      "archive_seconds": 0.210678,
+      "correctness": {
+        "duplicate_preserved_previous_result": true,
+        "incremental_equals_full_rebuild": null,
+        "published_equals_full_rebuild": true
+      },
+      "database_statements": {
+        "archive": 64,
+        "full_rebuild_check": 3,
+        "incremental_check": 0,
+        "ingestion": 80880,
+        "recovery": 16272
+      },
+      "files_ingested": 8,
+      "full_rebuild_fingerprint": "25ba295aeedf08ac99e90ae9309309484917c13620f8f4be508a329e9cdff639",
+      "full_rebuild_seconds": 1.570148,
+      "incremental_fingerprint": null,
+      "incremental_seconds": null,
+      "ingestion_rows_per_second": 163.82,
+      "ingestion_seconds": 61.658161,
+      "logical_fingerprint": "25ba295aeedf08ac99e90ae9309309484917c13620f8f4be508a329e9cdff639",
+      "publication_seconds": 14.948468,
+      "reconciliation_seconds": 19.009348,
+      "records_ingested": 10101,
+      "recovery_queue_delay_seconds_average": 44.614636,
+      "recovery_queue_delay_seconds_max": 66.570615,
+      "recovery_retries": 0,
+      "recovery_runs": 8,
+      "workload": "complete duplicate redelivery"
+    },
+    {
+      "archive_retries": 0,
+      "archive_seconds": 0.023799,
+      "correctness": {
+        "duplicate_preserved_previous_result": null,
+        "incremental_equals_full_rebuild": null,
+        "published_equals_full_rebuild": true
+      },
+      "database_statements": {
+        "archive": 8,
+        "full_rebuild_check": 4,
+        "incremental_check": 0,
+        "ingestion": 89,
+        "recovery": 2045
+      },
+      "files_ingested": 1,
+      "full_rebuild_fingerprint": "7bad465f873e0718e4830949e657a4cbb697f47ee63defadbffc4738a70e8e42",
+      "full_rebuild_seconds": 2.042381,
+      "incremental_fingerprint": null,
+      "incremental_seconds": null,
+      "ingestion_rows_per_second": 107.5,
+      "ingestion_seconds": 0.093024,
+      "logical_fingerprint": "7bad465f873e0718e4830949e657a4cbb697f47ee63defadbffc4738a70e8e42",
+      "publication_seconds": 1.950167,
+      "reconciliation_seconds": 1.931808,
+      "records_ingested": 10,
+      "recovery_queue_delay_seconds_average": 0.15235,
+      "recovery_queue_delay_seconds_max": 0.15235,
+      "recovery_retries": 0,
+      "recovery_runs": 1,
+      "workload": "0.1% same-version conflicts"
+    }
+  ]
+}

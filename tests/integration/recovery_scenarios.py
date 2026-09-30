@@ -34,6 +34,10 @@ from threadline.recovery_fingerprint import (
 )
 from threadline.source_files import publish_source_file
 
+from threadline.conflict_evidence import (
+    replace_conflict_evidence,
+    variant_reference,
+)
 
 DAY = date(2026, 9, 14)
 LATE_DAY = date(2026, 9, 17)
@@ -591,6 +595,21 @@ class Scenario:
             quarantine_records=(),
         )
 
+        evidence_by_receipt = {
+            envelope.receipt_id: variant_reference(
+                source_system=envelope.record.SOURCE_SYSTEM.value,
+                entity_type=envelope.record.ENTITY_TYPE.value,
+                source_id=envelope.record.record_id,
+                source_version=envelope.record.source_version,
+                payload_hash=envelope.payload_hash,
+            )
+            for envelope in envelopes
+        }
+        oracle = replace_conflict_evidence(
+            oracle,
+            evidence_by_receipt,
+        )
+        
         published = self.published()
 
         assert_financial_equal(

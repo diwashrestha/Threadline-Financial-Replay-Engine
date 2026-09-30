@@ -31,6 +31,11 @@ from threadline.recovery_fingerprint import (
     json_value,
 )
 
+from threadline.entity_locks import (
+    acquire_entity_locks,
+    entity_sort_key,
+)
+
 
 FailureHook = Callable[[str], None]
 
@@ -357,6 +362,26 @@ def ingest_source_file(
     if ready is None:
         return None
 
+    identity_keys = set()
+
+    for payload in ready.records:
+        try:
+            record = parse_source_record(
+                ready.entity_type,
+                payload,
+            )
+        except ContractViolation:
+            # Invalid rows become quarantine evidence.
+            # They do not create canonical entities.
+            continue
+
+        identity_keys.add(
+            (
+                ready.entity_type.value,
+                record.record_id,
+            )
+        )
+    
     delivery_key = document_fingerprint(
         {
             "source_system": ready.source_system.value,
@@ -376,6 +401,7 @@ def ingest_source_file(
     ) as connection:
         with connection.transaction():
             lock_financial_state(connection)
+            acquire_entity_locks(connection, identity_keys)
 
             existing = connection.execute(
                 """
@@ -621,8 +647,13 @@ def ingest_source_file(
                     (ready.entity_type.value, record.record_id)
                 )
 
-            for entity_type, source_id in sorted(touched):
-                _resolve_entity(connection, entity_type, source_id)
+            for entity_type, source_id in sorted(
+                touched,
+                key=entity_sort_key,):
+                _resolve_entity(
+                    connection, 
+                    entity_type, 
+                    source_id)
 
             hook("after_entity_resolution")
 
